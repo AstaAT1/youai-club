@@ -8,9 +8,7 @@ import {
 } from 'lucide-react';
 import AmbientBackground from './components/AmbientBackground.jsx';
 import ProgressNav from './components/ProgressNav.jsx';
-import { recaptchaSiteKey } from './lib/email.js';
 import { validateApplication } from './lib/validation.js';
-import Recaptcha from './components/Recaptcha.jsx';
 import { nextStep, previousStep } from './lib/journey.js';
 
 const INITIAL_FORM = {
@@ -182,8 +180,6 @@ function Application({ form, setForm, back, onSuccess }) {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
   const [done, setDone] = useState(false);
-  const [captchaToken, setCaptchaToken] = useState('');
-  const [captchaReset, setCaptchaReset] = useState(0);
   const formRef = useRef(null);
   const sendLock = useRef(false);
   const formOpenedAt = useRef(Date.now());
@@ -214,50 +210,33 @@ function Application({ form, setForm, back, onSuccess }) {
       setSendError('Please review your answers before submitting.');
       return;
     }
-    if (recaptchaSiteKey && !captchaToken) {
-      setSendError('Please complete the human verification.');
-      return;
-    }
     try {
       const lastSent = Number(window.localStorage.getItem('youai-last-sent') || 0);
       if (lastSent && Date.now() - lastSent < 5 * 60 * 1000) {
         setSendError('An application was recently submitted from this browser. Please try again later.');
         return;
       }
-    } catch { /* Storage can be unavailable; the EmailJS throttle still applies. */ }
+    } catch { /* Browser storage may be unavailable. */ }
     sendLock.current = true;
     setSending(true);
     setSendError('');
     try {
-
       const response = await fetch('/api/register', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          ...form,
-          captchaToken,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
       });
-
       const result = await response.json();
-
       if (!response.ok || result.success !== true) {
-        throw new Error('Application could not be saved');
+        throw new Error(result.message || 'Application could not be saved.');
       }
-
       try { window.localStorage.setItem('youai-last-sent', String(Date.now())); } catch { /* optional cooldown */ }
       setDone(true);
       onSuccess?.();
     } catch (error) {
       // Avoid logging the user's personal form answers in browser diagnostics.
       const message = error instanceof Error ? error.message : '';
-      setSendError(message.includes('EmailJS is not configured') || message.includes('human verification') || message.includes('review your application')
-        ? message
-        : 'We could not send your application. Please check your connection or verification and try again.');
-      setCaptchaToken('');
-      setCaptchaReset((count) => count + 1);
+      setSendError(message || 'We could not save your application. Please try again.');
     } finally {
       sendLock.current = false;
       setSending(false);
@@ -270,7 +249,7 @@ function Application({ form, setForm, back, onSuccess }) {
       <SectionLabel number="04">TRANSMISSION COMPLETE</SectionLabel>
       <h2 id="success-heading" className="section-title mt-6 font-heading">You're on the radar,<br /><span className="text-gradient-cyan">{form.fullName.trim().split(/\s+/)[0]}.</span></h2>
       <p className="mt-5 max-w-[465px] text-[15px] leading-7 text-slate-400">Your application has been submitted to the YouAI team. We'll review it and reach out if there's a next step.</p>
-      <div className="mt-8 flex items-center gap-3 rounded-[11px] border border-white/10 bg-white/[0.035] px-5 py-4 text-[12px] text-slate-300"><Mail size={16} className="text-cyan-300" /> Confirmation shown here after successful email delivery.</div>
+      <div className="mt-8 flex items-center gap-3 rounded-[11px] border border-white/10 bg-white/[0.035] px-5 py-4 text-[12px] text-slate-300"><Mail size={16} className="text-cyan-300" /> Your application has been saved for the YouAI team to review.</div>
     </section>
   );
 
@@ -282,7 +261,7 @@ function Application({ form, setForm, back, onSuccess }) {
         <p className="mt-5 max-w-[370px] text-[14px] leading-7 text-slate-400">There is no perfect background or perfect answer. Just tell us who you are, what drives you, and what you'd love to create.</p>
         <div className="mt-9 max-w-[360px] space-y-4 border-t border-white/[0.085] pt-6">
           <div className="flex items-start gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-300/[.075] text-cyan-300"><Check size={16} /></span><div><p className="text-[12px] font-semibold text-white">Every skill level is welcome</p><p className="mt-1 text-[12px] leading-5 text-slate-500">Beginners and experienced builders can apply.</p></div></div>
-          <div className="flex items-start gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-300/[.075] text-cyan-300"><Mail size={15} /></span><div><p className="text-[12px] font-semibold text-white">Straight to our team</p><p className="mt-1 text-[12px] leading-5 text-slate-500">Your answers are delivered by email to the club's application inbox.</p></div></div>
+          <div className="flex items-start gap-3"><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-300/[.075] text-cyan-300"><Mail size={15} /></span><div><p className="text-[12px] font-semibold text-white">Straight to our team</p><p className="mt-1 text-[12px] leading-5 text-slate-500">Your answers are saved privately in the club's application sheet.</p></div></div>
         </div>
         <div className="mt-8 hidden items-center gap-3 font-mono text-[10px] tracking-[0.12em] text-slate-600 lg:flex"><span className="h-1.5 w-1.5 rounded-full bg-cyan-400" /> YOUR IDEAS BELONG HERE</div>
       </div>
@@ -326,9 +305,8 @@ function Application({ form, setForm, back, onSuccess }) {
           </FormField>
         </div>
         <div className="absolute -left-[9999px] top-auto h-px w-px overflow-hidden" aria-hidden="true"><label htmlFor="website">Website (leave blank)</label><input type="text" id="website" name="website" value={form.website} onChange={(e) => update('website', e.target.value)} tabIndex={-1} autoComplete="off" /></div>
-        <div className="mt-6 flex items-start gap-3 rounded-[10px] border border-white/[0.085] bg-white/[0.025] p-4"><input type="checkbox" id="agreed" name="agreed" checked={form.agreed} onChange={(e) => update('agreed', e.target.checked)} className="agreement-check mt-[2px] h-[16px] w-[16px] shrink-0 accent-cyan-300" /><div className="text-[12px] leading-[1.7] text-slate-400"><label htmlFor="agreed" className="cursor-pointer">I consent to YouAI using my application details only to review my membership request and contact me about it. The form is sent through EmailJS to the club inbox; no application database is created by this website.</label> <button type="button" onClick={back} className="font-semibold text-cyan-300 underline decoration-cyan-300/30 underline-offset-4 hover:text-white">Review the values</button>.</div></div>
+        <div className="mt-6 flex items-start gap-3 rounded-[10px] border border-white/[0.085] bg-white/[0.025] p-4"><input type="checkbox" id="agreed" name="agreed" checked={form.agreed} onChange={(e) => update('agreed', e.target.checked)} className="agreement-check mt-[2px] h-[16px] w-[16px] shrink-0 accent-cyan-300" /><div className="text-[12px] leading-[1.7] text-slate-400"><label htmlFor="agreed" className="cursor-pointer">I consent to YouAI storing my application in the club's private Google Sheet, using it only to review my membership request and contact me about it.</label> <button type="button" onClick={back} className="font-semibold text-cyan-300 underline decoration-cyan-300/30 underline-offset-4 hover:text-white">Review the values</button>.</div></div>
         {errors.agreed && <p className="mt-2 text-[11px] text-rose-300" role="alert">{errors.agreed}</p>}
-        <Recaptcha siteKey={recaptchaSiteKey} onChange={setCaptchaToken} resetSignal={captchaReset} />
         {sendError && <div className="mt-5 flex items-start gap-2 rounded-xl border border-rose-400/25 bg-rose-400/5 p-3 text-[12px] leading-6 text-rose-200" role="alert"><CircleAlert size={17} className="mt-1 shrink-0" /><span>{sendError}</span></div>}
         <div className="mt-6 flex flex-col items-stretch justify-between gap-4 sm:flex-row sm:items-center"><span className="font-mono text-[10px] leading-5 text-slate-500">* REQUIRED FIELDS<br />REVIEWED BY THE YOUAI TEAM</span><PrimaryButton type="submit" disabled={sending} loading={sending} className="w-full sm:w-auto">{sending ? 'Sending application...' : 'Submit application'}</PrimaryButton></div>
       </form>
