@@ -9,21 +9,16 @@ const emailConfig = {
   publicKey: import.meta.env.VITE_EMAILJS_PUBLIC_KEY?.trim(),
 };
 
-export const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY?.trim() || '';
-
 export const isEmailConfigured = Object.values(emailConfig).every(
   (value) => Boolean(value && !value.startsWith('your_'))
 );
 
-export async function sendApplication(form, captchaToken = '') {
+export async function sendApplication(form) {
   if (!isEmailConfigured) {
     throw new Error('EmailJS is not configured. Add your three EmailJS values to the .env file, then restart Vite.');
   }
   if (Object.keys(validateApplication(form)).length) {
     throw new Error('Please review your application fields.');
-  }
-  if (recaptchaSiteKey && !captchaToken) {
-    throw new Error('Please complete the human verification.');
   }
 
   const safe = (text) => escapeHtml(text);
@@ -41,7 +36,6 @@ export async function sendApplication(form, captchaToken = '') {
       objectives: safe(normalizeParagraph(form.objectives, FIELD_LIMITS.objectives)),
       submitted_at: new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Africa/Casablanca' }) + ' (Casablanca)',
       club_name: 'YouAI — YouCode Safi',
-      ...(recaptchaSiteKey ? { 'g-recaptcha-response': captchaToken } : {}),
     },
     {
       publicKey: emailConfig.publicKey,

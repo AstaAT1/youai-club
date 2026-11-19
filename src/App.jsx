@@ -9,6 +9,7 @@ import {
 import AmbientBackground from './components/AmbientBackground.jsx';
 import ProgressNav from './components/ProgressNav.jsx';
 import { validateApplication } from './lib/validation.js';
+import { sendApplication } from './lib/email.js';
 import { nextStep, previousStep } from './lib/journey.js';
 
 const INITIAL_FORM = {
@@ -180,6 +181,7 @@ function Application({ form, setForm, back, onSuccess }) {
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState('');
   const [done, setDone] = useState(false);
+  const [notificationFailed, setNotificationFailed] = useState(false);
   const formRef = useRef(null);
   const sendLock = useRef(false);
   const formOpenedAt = useRef(Date.now());
@@ -230,6 +232,15 @@ function Application({ form, setForm, back, onSuccess }) {
       if (!response.ok || result.success !== true) {
         throw new Error(result.message || 'Application could not be saved.');
       }
+      // Saving to Google Sheets is the source of truth. Email is only a notification.
+      // If EmailJS fails, do not retry saving the form (which would create duplicates).
+      try {
+        await sendApplication(form);
+        setNotificationFailed(false);
+      } catch {
+        console.warn('Application saved, but the email notification failed.');
+        setNotificationFailed(true);
+      }
       try { window.localStorage.setItem('youai-last-sent', String(Date.now())); } catch { /* optional cooldown */ }
       setDone(true);
       onSuccess?.();
@@ -250,6 +261,7 @@ function Application({ form, setForm, back, onSuccess }) {
       <h2 id="success-heading" className="section-title mt-6 font-heading">You're on the radar,<br /><span className="text-gradient-cyan">{form.fullName.trim().split(/\s+/)[0]}.</span></h2>
       <p className="mt-5 max-w-[465px] text-[15px] leading-7 text-slate-400">Your application has been submitted to the YouAI team. We'll review it and reach out if there's a next step.</p>
       <div className="mt-8 flex items-center gap-3 rounded-[11px] border border-white/10 bg-white/[0.035] px-5 py-4 text-[12px] text-slate-300"><Mail size={16} className="text-cyan-300" /> Your application has been saved for the YouAI team to review.</div>
+      {notificationFailed && <p role="status" className="mt-4 max-w-[520px] text-[12px] leading-6 text-amber-200">Your application was saved successfully. The optional email notification could not be sent. Please do not submit the form again.</p>}
     </section>
   );
 
@@ -305,7 +317,7 @@ function Application({ form, setForm, back, onSuccess }) {
           </FormField>
         </div>
         <div className="absolute -left-[9999px] top-auto h-px w-px overflow-hidden" aria-hidden="true"><label htmlFor="website">Website (leave blank)</label><input type="text" id="website" name="website" value={form.website} onChange={(e) => update('website', e.target.value)} tabIndex={-1} autoComplete="off" /></div>
-        <div className="mt-6 flex items-start gap-3 rounded-[10px] border border-white/[0.085] bg-white/[0.025] p-4"><input type="checkbox" id="agreed" name="agreed" checked={form.agreed} onChange={(e) => update('agreed', e.target.checked)} className="agreement-check mt-[2px] h-[16px] w-[16px] shrink-0 accent-cyan-300" /><div className="text-[12px] leading-[1.7] text-slate-400"><label htmlFor="agreed" className="cursor-pointer">I consent to YouAI storing my application in the club's private Google Sheet, using it only to review my membership request and contact me about it.</label> <button type="button" onClick={back} className="font-semibold text-cyan-300 underline decoration-cyan-300/30 underline-offset-4 hover:text-white">Review the values</button>.</div></div>
+        <div className="mt-6 flex items-start gap-3 rounded-[10px] border border-white/[0.085] bg-white/[0.025] p-4"><input type="checkbox" id="agreed" name="agreed" checked={form.agreed} onChange={(e) => update('agreed', e.target.checked)} className="agreement-check mt-[2px] h-[16px] w-[16px] shrink-0 accent-cyan-300" /><div className="text-[12px] leading-[1.7] text-slate-400"><label htmlFor="agreed" className="cursor-pointer">I consent to YouAI storing my application in the club's private Google Sheet and sending a copy to the club inbox, for reviewing my membership request and contacting me about it.</label> <button type="button" onClick={back} className="font-semibold text-cyan-300 underline decoration-cyan-300/30 underline-offset-4 hover:text-white">Review the values</button>.</div></div>
         {errors.agreed && <p className="mt-2 text-[11px] text-rose-300" role="alert">{errors.agreed}</p>}
         {sendError && <div className="mt-5 flex items-start gap-2 rounded-xl border border-rose-400/25 bg-rose-400/5 p-3 text-[12px] leading-6 text-rose-200" role="alert"><CircleAlert size={17} className="mt-1 shrink-0" /><span>{sendError}</span></div>}
         <div className="mt-6 flex flex-col items-stretch justify-between gap-4 sm:flex-row sm:items-center"><span className="font-mono text-[10px] leading-5 text-slate-500">* REQUIRED FIELDS<br />REVIEWED BY THE YOUAI TEAM</span><PrimaryButton type="submit" disabled={sending} loading={sending} className="w-full sm:w-auto">{sending ? 'Sending application...' : 'Submit application'}</PrimaryButton></div>
