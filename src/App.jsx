@@ -212,13 +212,6 @@ function Application({ form, setForm, back, onSuccess }) {
       setSendError('Please review your answers before submitting.');
       return;
     }
-    try {
-      const lastSent = Number(window.localStorage.getItem('youai-last-sent') || 0);
-      if (lastSent && Date.now() - lastSent < 5 * 60 * 1000) {
-        setSendError('An application was recently submitted from this browser. Please try again later.');
-        return;
-      }
-    } catch { /* Browser storage may be unavailable. */ }
     sendLock.current = true;
     setSending(true);
     setSendError('');
@@ -241,7 +234,6 @@ function Application({ form, setForm, back, onSuccess }) {
         console.warn('Application saved, but the email notification failed.');
         setNotificationFailed(true);
       }
-      try { window.localStorage.setItem('youai-last-sent', String(Date.now())); } catch { /* optional cooldown */ }
       setDone(true);
       onSuccess?.();
     } catch (error) {

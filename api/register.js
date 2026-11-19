@@ -69,6 +69,13 @@ export default async function handler(req, res) {
       signal: AbortSignal.timeout(25000),
     });
     const result = await response.json();
+    // A duplicate is a handled validation result, not a Sheets outage.
+    if (result?.error === 'already_registered') {
+      return res.status(409).json({
+        success: false,
+        message: 'This email already has an application. Please contact the YouAI team if you need to update it.',
+      });
+    }
     if (!response.ok || result.success !== true) {
       console.error('Google Sheets registration rejected:', result?.error || response.status);
       return res.status(502).json({ success: false, message: 'Could not save application to Google Sheets.' });
